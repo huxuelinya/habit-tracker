@@ -1,54 +1,300 @@
-<!doctype html><html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width,initial-scale=1'><title>每日习惯打卡</title><link rel='manifest' href='manifest.webmanifest'><link rel='apple-touch-icon' href='icons/icon-192.png'><script src='https://cdn.tailwindcss.com'></script></head><body><div id='root'></div><script src='https://unpkg.com/react@18/umd/react.production.min.js'></script><script src='https://unpkg.com/react-dom@18/umd/react-dom.production.min.js'></script><script src='https://unpkg.com/@babel/standalone/babel.min.js'></script><script type='text/babel'>
-const {useEffect,useMemo,useRef,useState} = React;
-// Minimal functional first version
-function HabitTracker(){
-  const defaultConfig={targets:{wake:{by:"06:00"},bed:{by:"22:00"},listening:{minutes:60},readingVocab:{minutes:30},english:{minutes:30},strength:{minutes:40},cardio:{minutes:30},eatHealthy:{required:true}},reminders:{wake:"06:00",listening:"09:00",readingVocab:"10:30",english:"15:00",strength:"17:30",cardio:"18:30",windDown:"21:30",bed:"22:00"}};
-  const STORAGE_KEYS={config:"habit_config_v1",progress:(dk)=>`habit_progress_${dk}`,streak:"habit_streak_v1"};
-  const todayKey=useMemo(()=>new Date().toISOString().slice(0,10),[]);
-  function loadConfig(){try{const raw=localStorage.getItem(STORAGE_KEYS.config);return raw?JSON.parse(raw):structuredClone(defaultConfig);}catch{return structuredClone(defaultConfig);}}
-  function saveConfig(n){localStorage.setItem(STORAGE_KEYS.config,JSON.stringify(n));}
-  function loadProgress(k){try{const raw=localStorage.getItem(STORAGE_KEYS.progress(k));if(raw) return JSON.parse(raw);}catch{}return{wake:null,bed:null,listening:0,readingVocab:0,english:0,strength:0,cardio:0,eatHealthy:false,notes:"",completedAt:null};}
-  function saveProgress(k,d){localStorage.setItem(STORAGE_KEYS.progress(k),JSON.stringify(d));}
-  function loadStreak(){try{const raw=localStorage.getItem(STORAGE_KEYS.streak);return raw?JSON.parse(raw):{best:0,current:0,lastDate:null};}catch{return {best:0,current:0,lastDate:null};}}
-  function saveStreak(d){localStorage.setItem(STORAGE_KEYS.streak,JSON.stringify(d));}
-  const [config,setConfig]=useState(loadConfig);const [progress,setProgress]=useState(()=>loadProgress(todayKey));const [streak,setStreak]=useState(loadStreak);const [notifEnabled,setNotifEnabled]=useState(null);const [activeTimer,setActiveTimer]=useState(null);
-  const tickRef=useRef(null);
-  function toHM(date){return date.toTimeString().slice(0,5);}function parseHM(hm){const [h,m]=hm.split(":").map(Number);const d=new Date();d.setHours(h,m,0,0);return d;}
-  function goalMet(p){const t=config.targets;const wakeOk=p.wake && parseHM(p.wake)<=parseHM(t.wake.by);const bedOk=p.bed && parseHM(p.bed)<=parseHM(t.bed.by);return wakeOk&&bedOk&&p.listening>=t.listening.minutes&&p.readingVocab>=t.readingVocab.minutes&&p.english>=t.english.minutes&&p.strength>=t.strength.minutes&&p.cardio>=t.cardio.minutes&&(!t.eatHealthy.required||p.eatHealthy===true);}
-  function notify(title, body){ if(!('Notification' in window)) return; if(Notification.permission==='granted'){ new Notification(title,{body}); } }
-  useEffect(()=>{ if('Notification' in window){ setNotifEnabled(Notification.permission==='granted'); } else { setNotifEnabled(false);} },[]);
-  useEffect(()=>{ saveConfig(config); },[config]);
-  useEffect(()=>{ saveProgress(todayKey,progress); },[progress,todayKey]);
-  useEffect(()=>{ tickRef.current=setInterval(()=>setProgress(p=>({...p})),60000); return ()=>clearInterval(tickRef.current); },[]);
-  function handleStartTimer(key){ if(activeTimer&&activeTimer.key!==key) return; setActiveTimer({key, startedAt:Date.now()});}
-  function handleStopTimer(){ if(!activeTimer) return; const elapsed=Math.round((Date.now()-activeTimer.startedAt)/60000); const key=activeTimer.key; setProgress(p=>({...p,[key]:Math.max(0,(p[key]||0)+elapsed)})); setActiveTimer(null);}
-  function add(key,m){ setProgress(p=>({...p,[key]:Math.max(0,(p[key]||0)+m)})); }
-  return (<div className="p-4 max-w-3xl mx-auto">
-    <h1 className="text-2xl font-bold mb-3">每日习惯打卡</h1>
-    <div className="grid grid-cols-2 gap-3 mb-3">
-      <div className="p-4 bg-white rounded-xl shadow"><div className="flex justify-between"><div><div className="font-semibold">起床（≤ {config.targets.wake.by}）</div><div className="text-sm opacity-70">打卡：{progress.wake||"—"}</div></div><button className="btn" onClick={()=>{const hm=toHM(new Date()); setProgress(p=>({...p,wake:hm})); notify('已记录起床',hm);}}>现在起床</button></div></div>
-      <div className="p-4 bg-white rounded-xl shadow"><div className="flex justify-between"><div><div className="font-semibold">上床（≤ {config.targets.bed.by}）</div><div className="text-sm opacity-70">打卡：{progress.bed||"—"}</div></div><button className="btn" onClick={()=>{const hm=toHM(new Date()); setProgress(p=>({...p,bed:hm})); notify('已记录就寝',hm);}}>现在上床</button></div></div>
-    </div>
-    {['listening','readingVocab','english','strength','cardio'].map(k=>{
-      const names={listening:'德语听力',readingVocab:'阅读+词汇',english:'英语',strength:'力量训练',cardio:'有氧'};
-      const goals={listening:60,readingVocab:30,english:30,strength:40,cardio:30};
-      const val=progress[k]||0; const goal=goals[k];
-      return (<div key={k} className="p-4 bg-white rounded-xl shadow mb-3">
-        <div className="flex justify-between"><div><div className="font-semibold">{names[k]}</div><div className="text-sm opacity-70">{val} / {goal} 分钟</div></div>
-        <div className="flex items-center gap-2">{!(activeTimer&&activeTimer.key===k)?<button className="btn" onClick={()=>handleStartTimer(k)}>开始计时</button>:<button className="btn" onClick={handleStopTimer}>停止</button>}{[5,10,15,30].map(m=><button key={m} className="px-2 py-1 rounded bg-slate-100 text-xs" onClick={()=>add(k,m)}>+{m}m</button>)}</div></div>
-        <div className="mt-2 w-full h-3 bg-slate-100 rounded-full overflow-hidden"><div className="h-3 bg-emerald-400" style={{width: Math.min(100,Math.round((val/goal)*100))+'%'}}></div></div>
-      </div>);
-    })}
-    <div className="p-4 bg-white rounded-xl shadow mb-3">
-      <div className="flex justify-between items-center"><div><div className="font-semibold">健康饮食</div><div className="text-sm opacity-70">少糖少油，多蔬果蛋白</div></div>
-      <label className="inline-flex items-center gap-2"><input type="checkbox" checked={progress.eatHealthy} onChange={()=>setProgress(p=>({...p,eatHealthy:!p.eatHealthy}))}/><span>{progress.eatHealthy?'已达成':'未达成'}</span></label></div>
-    </div>
-    <div className="p-4 bg-white rounded-xl shadow">
-      <div className="font-semibold mb-2">今日备注</div>
-      <textarea className="w-full p-3 rounded-xl bg-slate-50 border" rows="3" placeholder="写点想法、反思或奖励自己的一句话" value={progress.notes} onChange={(e)=>setProgress(p=>({...p,notes:e.target.value}))}></textarea>
-    </div>
-  </div>);
-}
-const root=ReactDOM.createRoot(document.getElementById('root')); root.render(<HabitTracker/>);
-if('serviceWorker' in navigator){ window.addEventListener('load',()=>{ navigator.serviceWorker.register('./sw.js'); });}
-</script></body></html>
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>每日习惯打卡</title>
+  <meta name="theme-color" content="#093667" />
+  <link rel="manifest" href="manifest.webmanifest" />
+  <link rel="apple-touch-icon" href="icons/icon-192.png" />
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    body { background: linear-gradient(135deg,#f8fafc,#eef2ff); }
+    .btn{display:inline-flex;align-items:center;justify-content:center;padding:0.5rem 0.75rem;border-radius:1rem;background:#0f172a;color:#fff;box-shadow:0 4px 16px rgba(0,0,0,.08);transition:.2s}
+    .btn:active{transform:translateY(1px);opacity:.9}
+    .ghost{background:#fff;color:#0f172a}
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+  <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <script type="text/babel">
+    const {useEffect,useMemo,useRef,useState} = React;
+
+    const toDateKey = (d) => {
+      const x = new Date(d); x.setHours(0,0,0,0);
+      const y=x.getFullYear(), m=String(x.getMonth()+1).padStart(2,'0'), day=String(x.getDate()).padStart(2,'0');
+      return `${y}-${m}-${day}`;
+    };
+    const keyToDate = (key) => { const [y,m,d] = key.split('-').map(Number); return new Date(y, m-1, d); };
+    const addDays = (d, n) => { const x = new Date(d); x.setDate(x.getDate()+n); return x; };
+    const weekdayZh = ['周日','周一','周二','周三','周四','周五','周六'];
+    function toDay(d){ const x=new Date(d); x.setHours(0,0,0,0); return x; }
+
+    function HabitTracker(){
+      const defaultConfig = {
+        targets:{ wake:{by:"06:00"}, bed:{by:"22:00"}, listening:{minutes:60}, readingVocab:{minutes:30}, english:{minutes:30}, strength:{minutes:40}, cardio:{minutes:30}, eatHealthy:{required:true} },
+        reminders:{ wake:"06:00", listening:"09:00", readingVocab:"10:30", english:"15:00", strength:"17:30", cardio:"18:30", windDown:"21:30", bed:"22:00" }
+      };
+      const STORAGE_KEYS = { config:"habit_config_v1", progress:(dk)=>`habit_progress_${dk}`, streak:"habit_streak_v1" };
+
+      const [currentDate, setCurrentDate] = useState(new Date());
+      const dateKey = useMemo(()=>toDateKey(currentDate), [currentDate]);
+      const todayKey = useMemo(()=>toDateKey(new Date()), []);
+
+      function loadConfig(){ try{ const raw=localStorage.getItem(STORAGE_KEYS.config); return raw?JSON.parse(raw):structuredClone(defaultConfig);}catch{return structuredClone(defaultConfig);} }
+      function saveConfig(next){ localStorage.setItem(STORAGE_KEYS.config, JSON.stringify(next)); }
+      function loadProgress(dateKey){ try{ const raw=localStorage.getItem(STORAGE_KEYS.progress(dateKey)); if(raw) return JSON.parse(raw);}catch{}; return {wake:null, bed:null, listening:0, readingVocab:0, english:0, strength:0, cardio:0, eatHealthy:false, notes:"", completedAt:null}; }
+      function saveProgress(dateKey,data){ localStorage.setItem(STORAGE_KEYS.progress(dateKey), JSON.stringify(data)); }
+      function loadStreak(){ try{const raw=localStorage.getItem(STORAGE_KEYS.streak); return raw?JSON.parse(raw):{best:0,current:0,lastDate:null};}catch{return {best:0,current:0,lastDate:null};} }
+      function saveStreak(data){ localStorage.setItem(STORAGE_KEYS.streak, JSON.stringify(data)); }
+
+      const [config,setConfig]=useState(loadConfig);
+      const [progress,setProgress]=useState(()=>loadProgress(dateKey));
+      const [streak,setStreak]=useState(loadStreak);
+      const [notifEnabled,setNotifEnabled]=useState(null);
+      const [activeTimer,setActiveTimer]=useState(null);
+      const tickRef = useRef(null);
+      const timersRef = useRef([]);
+
+      useEffect(()=>{ setProgress(loadProgress(dateKey)); }, [dateKey]);
+
+      function toHM(date){ return date.toTimeString().slice(0,5); }
+      function parseHM(hm){ const [h,m]=hm.split(':').map(Number); const d=new Date(); d.setHours(h,m,0,0); return d; }
+      function goalMet(p){
+        const t=config.targets;
+        const wakeOk = p.wake && parseHM(p.wake) <= parseHM(t.wake.by);
+        const bedOk = p.bed && parseHM(p.bed) <= parseHM(t.bed.by);
+        return wakeOk && bedOk && p.listening >= t.listening.minutes && p.readingVocab >= t.readingVocab.minutes && p.english >= t.english.minutes && p.strength >= t.strength.minutes && p.cardio >= t.cardio.minutes && (!t.eatHealthy.required || p.eatHealthy === true);
+      }
+      function notify(title, body){ if(!("Notification" in window)) return; if(Notification.permission==="granted"){ new Notification(title,{body}); }}
+
+      function scheduleDailyNotifications(){
+        timersRef.current.forEach(id=>clearTimeout(id)); timersRef.current=[];
+        const keys = Object.entries(config.reminders);
+        for (const [k,hm] of keys){
+          const at = parseHM(hm); const now=new Date(); let delay = at.getTime()-now.getTime(); if(delay<0) delay+=86400000;
+          const id = window.setTimeout(function fire(){
+            const titles={wake:"起床打卡⌛️",listening:"德语听力 🎧",readingVocab:"阅读+背词 📚",english:"英语学习 🗣️",strength:"力量训练 💪",cardio:"有氧运动 🏃",windDown:"睡前准备 ⏳",bed:"22:00 上床 🌙"};
+            notify(titles[k]||"打卡提醒", hm);
+            const next = window.setInterval(()=>notify(titles[k]||"打卡提醒",hm), 86400000);
+            timersRef.current.push(next);
+          }, delay);
+          timersRef.current.push(id);
+        }
+      }
+
+      useEffect(()=>{ if("Notification" in window){ setNotifEnabled(Notification.permission==="granted"); } else { setNotifEnabled(false);} },[]);
+      useEffect(()=>{ saveConfig(config); if(notifEnabled) scheduleDailyNotifications(); },[config,notifEnabled]);
+      useEffect(()=>{ saveProgress(dateKey, progress); },[progress,dateKey]);
+      useEffect(()=>{ tickRef.current = window.setInterval(()=>{ setProgress(p=>({...p})) },60000); return ()=> tickRef.current && clearInterval(tickRef.current); },[]);
+
+      function handleStartTimer(key){ if(activeTimer && activeTimer.key!==key) return; setActiveTimer({key, startedAt: Date.now(), accBefore: progress[key]||0}); }
+      function handleStopTimer(){ if(!activeTimer) return; const elapsedMin = Math.round((Date.now()-activeTimer.startedAt)/60000); const key=activeTimer.key; setProgress(p=>({...p,[key]:Math.max(0,(p[key]||0)+elapsedMin)})); setActiveTimer(null); }
+      function handleQuickAdd(key, minutes){ setProgress(p=>({...p,[key]:Math.max(0,(p[key]||0)+minutes)})); }
+      function markWakeNow(){ const nowHM=toHM(new Date()); setProgress(p=>({...p,wake:nowHM})); notify("已记录起床", nowHM); }
+      function markBedNow(){ const nowHM=toHM(new Date()); setProgress(p=>({...p,bed:nowHM})); notify("已记录就寝", nowHM); }
+      function toggleHealthy(){ setProgress(p=>({...p,eatHealthy:!p.eatHealthy})); }
+      function requestNotif(){ if(!("Notification" in window)){ alert("当前浏览器不支持通知"); setNotifEnabled(false); return; } Notification.requestPermission().then((perm)=>{ setNotifEnabled(perm==="granted"); if(perm==="granted"){ notify("已开启通知提醒","我会按配置时间提醒你打卡"); scheduleDailyNotifications(); } }); }
+
+      function completeDayIfMet(){
+        if(!goalMet(progress)){ alert("还未达成全部目标，加油！"); return; }
+        const completedAt = new Date().toISOString(); const next = {...progress, completedAt};
+        setProgress(next); saveProgress(dateKey,next);
+        const prev = loadStreak(); const y = toDateKey(addDays(keyToDate(dateKey), -1));
+        const chained = prev.lastDate===y; const current = chained ? (prev.current||0)+1 : 1;
+        const best = Math.max(prev.best||0, current); const s={best,current,lastDate:dateKey}; setStreak(s); saveStreak(s);
+        notify("🎉 今日所有目标完成！", `连胜：${current} 天，最佳：${best} 天`);
+      }
+
+      const t=config.targets;
+      const pct=(val,goal)=>Math.min(100, Math.round((val/goal)*100));
+      const allMet=goalMet(progress);
+      const today = new Date();
+
+      return (
+        <div className="min-h-screen w-full text-slate-900 p-4 sm:p-6 md:p-8">
+          <div className="max-w-3xl mx-auto">
+            <header className="flex items-center justify-between mb-4">
+              <div>
+                <h1 className="text-2xl sm:text-3xl font-bold">每日习惯打卡</h1>
+                <div className="text-xs opacity-70 mt-1">数据按日期分别保存：切换上/下一天查看历史或填写明天。</div>
+              </div>
+              <div className="flex items-center gap-2">
+                <button onClick={requestNotif} className={"px-3 py-2 rounded-2xl shadow "+(notifEnabled? "bg-emerald-100":"bg-white")}>
+                  {notifEnabled? "通知：已开启":"开启通知"}
+                </button>
+              </div>
+            </header>
+
+            <div className="p-3 rounded-2xl bg-white shadow mb-4 flex items-center justify-between gap-2">
+              <div className="flex items-center gap-2">
+                <button className="btn ghost" onClick={()=>setCurrentDate(d=>addDays(d,-1))}>← 前一天</button>
+                <button className="btn ghost" onClick={()=>setCurrentDate(new Date())}>今天</button>
+                <button className="btn ghost" disabled={keyToDate(dateKey) >= toDay(today)} onClick={()=>setCurrentDate(d=>addDays(d,1))}>后一天 →</button>
+              </div>
+              <div className="flex items-center gap-2">
+                <input type="date" className="px-3 py-2 rounded-xl bg-slate-50 border border-slate-200" value={dateKey} max={toDateKey(today)} onChange={(e)=>setCurrentDate(keyToDate(e.target.value))} />
+                <div className="text-sm">{dateKey} · {weekdayZh[keyToDate(dateKey).getDay()]}</div>
+              </div>
+            </div>
+
+            <div className="mb-4 grid grid-cols-2 gap-3">
+              <div className="p-4 rounded-2xl bg-white shadow">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h3 className="font-semibold">起床（≤ {t.wake.by}）</h3>
+                    <p className="text-sm opacity-70">打卡时间：{progress.wake || "—"}</p>
+                  </div>
+                    <button onClick={markWakeNow} className="btn">现在起床</button>
+                </div>
+                <div className={"mt-2 inline-block text-xs px-2 py-1 rounded-full "+((progress.wake && parseHM(progress.wake) <= parseHM(t.wake.by))? "bg-emerald-100 text-emerald-700":"bg-slate-100 text-slate-500")}>
+                  {(progress.wake && parseHM(progress.wake) <= parseHM(t.wake.by))? "已达标":"未达标"}
+                </div>
+              </div>
+              <div className="p-4 rounded-2xl bg-white shadow">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h3 className="font-semibold">上床（≤ {t.bed.by}）</h3>
+                    <p className="text-sm opacity-70">打卡时间：{progress.bed || "—"}</p>
+                  </div>
+                  <button onClick={markBedNow} className="btn">现在上床</button>
+                </div>
+                <div className={"mt-2 inline-block text-xs px-2 py-1 rounded-full "+((progress.bed && parseHM(progress.bed) <= parseHM(t.bed.by))? "bg-emerald-100 text-emerald-700":"bg-slate-100 text-slate-500")}>
+                  {(progress.bed && parseHM(progress.bed) <= parseHM(t.bed.by))? "已达标":"未达标"}
+                </div>
+              </div>
+            </div>
+
+            {["listening","readingVocab","english","strength","cardio"].map(key=>{
+              const titles={listening:"德语听力",readingVocab:"德语阅读 + 背单词",english:"英语学习",strength:"力量训练",cardio:"有氧运动"};
+              const goals={listening:t.listening.minutes,readingVocab:t.readingVocab.minutes,english:t.english.minutes,strength:t.strength.minutes,cardio:t.cardio.minutes};
+              const val=progress[key]||0; const goal=goals[key]; const isActive = activeTimer && activeTimer.key===key;
+              return (
+                <div key={key} className="p-4 rounded-2xl bg-white shadow mb-3">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <h3 className="font-semibold">{titles[key]}</h3>
+                      <p className="text-sm opacity-70">{val} / {goal} 分钟</p>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      {!isActive ? (
+                        <button onClick={()=>handleStartTimer(key)} className="btn">开始计时</button>
+                      ) : (
+                        <button onClick={handleStopTimer} className="btn">停止</button>
+                      )}
+                      <div className="flex items-center gap-1">
+                        {[5,10,15,30].map(m=>(
+                          <button key={m} onClick={()=>handleQuickAdd(key,m)} className="px-2 py-1 rounded-xl bg-slate-100 hover:bg-slate-200 text-xs">+{m}m</button>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                  <div className="mt-2 w-full h-3 bg-slate-100 rounded-full overflow-hidden">
+                    <div className="h-3 bg-emerald-400" style={{width: Math.min(100, Math.round((val/goal)*100))+'%'}}></div>
+                  </div>
+                </div>
+              );
+            })}
+
+            <div className="grid gap-3 mb-4">
+              <div className="p-4 rounded-2xl bg-white shadow">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h3 className="font-semibold">健康饮食</h3>
+                    <p className="text-sm opacity-70">少糖少油，多蔬果蛋白</p>
+                  </div>
+                  <label className="inline-flex items-center gap-2 cursor-pointer select-none">
+                    <input type="checkbox" checked={progress.eatHealthy} onChange={()=>setProgress(p=>({...p, eatHealthy:!p.eatHealthy}))} />
+                    <span>{progress.eatHealthy ? "已达成":"未达成"}</span>
+                  </label>
+                </div>
+              </div>
+
+              <div className="p-4 rounded-2xl bg-white shadow">
+                <h3 className="font-semibold mb-2">当日备注</h3>
+                <textarea className="w-full p-3 rounded-xl bg-slate-50 outline-none border border-slate-200" rows="3" placeholder="写点想法、反思或奖励自己的一句话" value={progress.notes} onChange={(e)=>setProgress(p=>({...p, notes:e.target.value}))}></textarea>
+              </div>
+            </div>
+
+            <div className="mb-6 p-4 rounded-2xl bg-white shadow">
+              <div className="grid sm:grid-cols-2 gap-3">
+                {[
+                  ["听力", Math.min(100, Math.round((progress.listening/t.listening.minutes)*100))],
+                  ["阅读+词汇", Math.min(100, Math.round((progress.readingVocab/t.readingVocab.minutes)*100))],
+                  ["英语", Math.min(100, Math.round((progress.english/t.english.minutes)*100))],
+                  ["力量", Math.min(100, Math.round((progress.strength/t.strength.minutes)*100))],
+                  ["有氧", Math.min(100, Math.round((progress.cardio/t.cardio.minutes)*100))]
+                ].map(([label, p],i)=>(
+                  <div key={i} className="p-3 rounded-xl bg-slate-50">
+                    <div className="text-sm mb-1">{label}</div>
+                    <div className="w-full h-3 bg-white rounded-full shadow-inner overflow-hidden">
+                      <div className="h-3" style={{width: p+'%', background:'linear-gradient(90deg, rgba(16,185,129,1) 0%, rgba(59,130,246,1) 100%)'}}></div>
+                    </div>
+                    <div className="text-right text-xs opacity-70 mt-1">{p}%</div>
+                  </div>
+                ))}
+              </div>
+              <div className="flex items-center justify-between mt-3">
+                <span className={"text-sm "+(allMet? "text-emerald-600":"text-slate-500")}>{allMet? "✅ 今日全部目标已满足，可提交":"仍有目标未完成，加油！"}</span>
+                <button onClick={completeDayIfMet} className="btn">提交当日完成</button>
+              </div>
+            </div>
+
+            <details className="mb-10">
+              <summary className="cursor-pointer select-none text-slate-700">⚙️ 配置（目标与提醒时间）</summary>
+              <div className="mt-3 grid gap-3 p-4 bg-white rounded-2xl shadow">
+                <div className="grid sm:grid-cols-2 gap-3">
+                  <label className="text-sm flex flex-col gap-1">
+                    <span className="opacity-80">起床时间 ≤</span>
+                    <input type="time" className="px-3 py-2 rounded-xl bg-white border border-slate-200" value={config.targets.wake.by} onChange={(e)=>setConfig(c=>({...c, targets:{...c.targets, wake:{by:e.target.value}}}))} />
+                  </label>
+                  <label className="text-sm flex flex-col gap-1">
+                    <span className="opacity-80">上床时间 ≤</span>
+                    <input type="time" className="px-3 py-2 rounded-xl bg-white border border-slate-200" value={config.targets.bed.by} onChange={(e)=>setConfig(c=>({...c, targets:{...c.targets, bed:{by:e.target.value}}}))} />
+                  </label>
+                  {['listening','readingVocab','english','strength','cardio'].map(k=> (
+                    <label key={k} className="text-sm flex flex-col gap-1">
+                      <span className="opacity-80">{{listening:'德语听力',readingVocab:'阅读+词汇',english:'英语',strength:'力量训练',cardio:'有氧'}[k]} 目标分钟</span>
+                      <input type="number" min="0" className="px-3 py-2 rounded-xl bg-white border border-slate-200" value={config.targets[k].minutes} onChange={(e)=>setConfig(c=>({...c, targets:{...c.targets, [k]:{minutes:Number(e.target.value)}}}))} />
+                    </label>
+                  ))}
+                  <label className="text-sm flex items-center justify-between gap-2">
+                    <span className="opacity-80">需要勾选健康饮食</span>
+                    <input type="checkbox" checked={config.targets.eatHealthy.required} onChange={(e)=>setConfig(c=>({...c, targets:{...c.targets, eatHealthy:{required:e.target.checked}}}))} />
+                  </label>
+                </div>
+
+                <div className="grid sm:grid-cols-2 gap-3">
+                  {Object.entries(config.reminders).map(([k,v]) => (
+                    <label key={k} className="text-sm flex flex-col gap-1">
+                      <span className="opacity-80">{{wake:'起床',listening:'德语听力',readingVocab:'阅读+词汇',english:'英语',strength:'力量',cardio:'有氧',windDown:'睡前准备',bed:'就寝'}[k]} 提醒</span>
+                      <input type="time" className="px-3 py-2 rounded-xl bg-white border border-slate-200" value={v} onChange={(e)=>{
+                        const val = e.target.value; setConfig(c=>({...c, reminders:{...c.reminders, [k]: val}}));
+                      }} />
+                    </label>
+                  ))}
+                </div>
+                <p className="text-xs opacity-70">提示：开启通知后我会在这些时间发送提醒（iOS 需要 HTTPS 站点 & Safari 允许通知）。</p>
+              </div>
+            </details>
+
+            <footer className="text-center text-xs text-slate-500 mb-8">Made with ❤️ for Xiuying · 数据按日期分别保存在你的设备浏览器中。</footer>
+          </div>
+        </div>
+      );
+    }
+
+    const root = ReactDOM.createRoot(document.getElementById('root'));
+    root.render(<HabitTracker />);
+
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => {
+        navigator.serviceWorker.register('./sw.js');
+      });
+    }
+  </script>
+</body>
+</html>
